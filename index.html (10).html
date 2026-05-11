@@ -647,6 +647,13 @@ input,select,textarea,button{font-family:'DM Sans',sans-serif;}
         <option value="biweekly">Co 2 tygodnie</option>
       </select>
     </div>
+    <div class="field">
+      <label>Forma płatności (domyślna)</label>
+      <div style="display:flex;gap:8px;">
+        <button id="tpl-pay-cash" type="button" onclick="setTplPay('cash')" class="btn-sm present" style="flex:1;padding:10px;">💵 Gotówka</button>
+        <button id="tpl-pay-transfer" type="button" onclick="setTplPay('transfer')" class="btn-sm" style="flex:1;padding:10px;">🏦 Przelew</button>
+      </div>
+    </div>
     <button class="btn-primary" onclick="saveTemplate()">Zapisz stały slot</button>
     <button class="btn-danger" id="delete-template-btn" style="display:none" onclick="deleteTemplate()">Usuń stały slot</button>
   </div>
@@ -1289,6 +1296,84 @@ function loadScheduleToBuilder(schedule) {
   (schedule||[]).forEach(s => addScheduleRow(s.day, s.time, s.type||'1'));
 }
 
+// ── TEMPLATE (STAŁY SLOT) CRUD ────────────────────
+let editTemplateId = null;
+let tplPayMethod = 'cash';
+
+function setTplPay(method) {
+  tplPayMethod = method;
+  document.getElementById('tpl-pay-cash').className     = 'btn-sm '+(method==='cash'?'present':'');
+  document.getElementById('tpl-pay-transfer').className = 'btn-sm '+(method==='transfer'?'present':'');
+}
+
+function openAddTemplate() {
+  editTemplateId = null;
+  tplPayMethod = 'cash';
+  document.getElementById('template-modal-title').textContent = 'Nowy stały slot';
+  document.getElementById('tpl-time').value = '';
+  document.getElementById('tpl-day').value = new Date().getDay() || 1;
+  document.getElementById('tpl-repeat').value = 'weekly';
+  document.getElementById('delete-template-btn').style.display = 'none';
+  setTplPay('cash');
+  populateTemplateClientSelects(null, null);
+  document.getElementById('modal-template').classList.add('show');
+}
+
+function openEditTemplate(id) {
+  editTemplateId = id;
+  const tpl = (state.templates||[]).find(t=>t.id===id);
+  if (!tpl) return;
+  tplPayMethod = tpl.payment || 'cash';
+  document.getElementById('template-modal-title').textContent = 'Edytuj stały slot';
+  document.getElementById('tpl-time').value = tpl.time;
+  document.getElementById('tpl-day').value = tpl.day;
+  document.getElementById('tpl-repeat').value = tpl.repeat||'weekly';
+  document.getElementById('delete-template-btn').style.display = 'block';
+  setTplPay(tplPayMethod);
+  populateTemplateClientSelects(tpl.client1, tpl.client2);
+  document.getElementById('modal-template').classList.add('show');
+}
+
+function populateTemplateClientSelects(sel1, sel2) {
+  const opts = state.clients.map(c =>
+    `<option value="${c.id}" ${sel1===c.id?'selected':''}>${c.name}</option>`
+  ).join('');
+  const opts2 = '<option value="">— Brak —</option>' + state.clients.map(c =>
+    `<option value="${c.id}" ${sel2===c.id?'selected':''}>${c.name}</option>`
+  ).join('');
+  document.getElementById('tpl-client1').innerHTML = '<option value="">— Wybierz —</option>' + opts;
+  document.getElementById('tpl-client2').innerHTML = opts2;
+}
+
+function saveTemplate() {
+  const time = document.getElementById('tpl-time').value;
+  const day  = document.getElementById('tpl-day').value;
+  const client1 = document.getElementById('tpl-client1').value;
+  const client2 = document.getElementById('tpl-client2').value || null;
+  const repeat  = document.getElementById('tpl-repeat').value;
+  if (!time) { alert('Podaj godzinę!'); return; }
+  if (!state.templates) state.templates = [];
+  const tplData = {time, day, client1, client2, repeat, payment: tplPayMethod};
+  if (editTemplateId) {
+    const t = state.templates.find(x=>x.id===editTemplateId);
+    if (t) Object.assign(t, tplData);
+  } else {
+    state.templates.push({id:'tpl-'+Date.now(), ...tplData});
+  }
+  save();
+  closeModal('modal-template');
+  renderGrafik();
+  showFlash('✓ Stały slot zapisany');
+}
+
+function deleteTemplate() {
+  if (!editTemplateId || !confirm('Usunąć stały slot?')) return;
+  state.templates = (state.templates||[]).filter(t=>t.id!==editTemplateId);
+  save();
+  closeModal('modal-template');
+  renderGrafik();
+}
+
 // ── CLIENT CRUD (aktualizacja) ─────────────────────
 let pkgClientId = null;
 function openAddPackage(clientId) {
@@ -1336,11 +1421,35 @@ function renderStats() {
   const monday = new Date(now); monday.setDate(now.getDate()-mondayOffset); monday.setHours(0,0,0,0);
   const thisWeek = allSes.filter(s => new Date(s.date+'T12:00:00') >= monday);
 
+  // Podział gotówka/przelew — tydzień
+  const cashWeek     = thisWeek.filter(s=>s.payment==='cash').reduce((s,x)=>s+x.total,0);
+  const transferWeek = thisWeek.filter(s=>s.payment==='transfer').reduce((s,x)=>s+x.total,0);
+
+  // Podział gotówka/przelew — miesiąc
+  const cashMonth  = thisMon.filter(s=>s.payment==='cash').reduce((s,x)=>s+x.total,0);
+  const transMonth = thisMon.filter(s=>s.payment==='transfer').reduce((s,x)=>s+x.total,0);
+
   const totalMonth = thisMon.reduce((s,x)=>s+x.total,0);
   const totalWeek  = thisWeek.reduce((s,x)=>s+x.total,0);
   const totalAll   = allSes.reduce((s,x)=>s+x.total,0);
-  const cashMonth  = thisMon.filter(s=>s.payment==='cash').reduce((s,x)=>s+x.total,0);
-  const transMonth = thisMon.filter(s=>s.payment==='transfer').reduce((s,x)=>s+x.total,0);
+
+  // Poprzedni tydzień — porównanie
+  const prevMonday = new Date(monday); prevMonday.setDate(monday.getDate()-7);
+  const prevWeek = allSes.filter(s => {
+    const d = new Date(s.date+'T12:00:00');
+    return d >= prevMonday && d < monday;
+  });
+  const prevWeekTotal = prevWeek.reduce((s,x)=>s+x.total,0);
+  const weekDiff = totalWeek - prevWeekTotal;
+
+  // Poprzedni miesiąc — porównanie
+  const prevMonthDate = new Date(year, month-1, 1);
+  const prevMon = allSes.filter(s => {
+    const d = new Date(s.date);
+    return d.getMonth()===prevMonthDate.getMonth() && d.getFullYear()===prevMonthDate.getFullYear();
+  });
+  const prevMonTotal = prevMon.reduce((s,x)=>s+x.total,0);
+  const monDiff = totalMonth - prevMonTotal;
 
   // Ranking klientów (miesiąc)
   const clientStats = state.clients.map(c => {
@@ -1349,7 +1458,9 @@ function renderStats() {
       const isPair=s.clients.length>1;
       return sum+(isPair?(c.price2||c.price1||0):(c.price1||0));
     },0);
-    return {c, count:ses.length, earned};
+    const cashC = ses.filter(s=>s.payment==='cash').reduce((sm,s)=>sm+s.total,0);
+    const transC = ses.filter(s=>s.payment==='transfer').reduce((sm,s)=>sm+s.total,0);
+    return {c, count:ses.length, earned, cashC, transC};
   }).filter(x=>x.count>0).sort((a,b)=>b.earned-a.earned);
 
   // Ostrzeżenia o karnetach
@@ -1361,10 +1472,19 @@ function renderStats() {
     const d = new Date(year, month-i, 1);
     const m = d.getMonth(), y = d.getFullYear();
     const ses = allSes.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===m&&sd.getFullYear()===y;});
+    const cash = ses.filter(s=>s.payment==='cash').reduce((sm,x)=>sm+x.total,0);
+    const trans = ses.filter(s=>s.payment==='transfer').reduce((sm,x)=>sm+x.total,0);
     const total = ses.reduce((sum,x)=>sum+x.total,0);
-    months.push({label: d.toLocaleString('pl',{month:'short'}), total, count: ses.length});
+    months.push({label: d.toLocaleString('pl',{month:'short'}), total, count: ses.length, cash, trans});
   }
-  const maxMonth = Math.max(...months.map(m=>m.total),1);
+  const maxMonth2 = Math.max(...months.map(m=>m.total),1);
+
+  function diffBadge(diff) {
+    if (!diff) return '';
+    const color = diff >= 0 ? 'var(--green)' : 'var(--red)';
+    const sign = diff >= 0 ? '+' : '';
+    return `<span style="font-size:10px;color:${color};font-family:'DM Mono',monospace;">${sign}${diff} zł vs poprzedni</span>`;
+  }
 
   const el = document.getElementById('stats-content');
   el.innerHTML = `
@@ -1383,35 +1503,48 @@ function renderStats() {
         <div class="stat-card-label">Ten tydzień</div>
         <div class="stat-card-val" style="color:var(--green)">${totalWeek} zł</div>
         <div class="stat-card-sub">${thisWeek.length} treningów</div>
+        ${diffBadge(weekDiff)}
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+          <div style="flex:1;background:rgba(255,255,255,0.04);border-radius:6px;padding:6px 8px;text-align:center;">
+            <div style="font-size:10px;color:var(--muted);">💵 Gotówka</div>
+            <div style="font-size:14px;font-weight:600;color:var(--accent);font-family:'DM Mono',monospace;">${cashWeek} zł</div>
+          </div>
+          <div style="flex:1;background:rgba(255,255,255,0.04);border-radius:6px;padding:6px 8px;text-align:center;">
+            <div style="font-size:10px;color:var(--muted);">🏦 Przelew</div>
+            <div style="font-size:14px;font-weight:600;color:var(--blue);font-family:'DM Mono',monospace;">${transferWeek} zł</div>
+          </div>
+        </div>
       </div>
       <div class="stat-card">
         <div class="stat-card-label">Ten miesiąc</div>
         <div class="stat-card-val" style="color:var(--accent)">${totalMonth} zł</div>
         <div class="stat-card-sub">${thisMon.length} treningów</div>
-      </div>
-    </div>
-    <div class="stat-grid">
-      <div class="stat-card">
-        <div class="stat-card-label">💵 Gotówka</div>
-        <div class="stat-card-val" style="font-size:22px;color:var(--accent)">${cashMonth} zł</div>
-        <div class="stat-card-sub">ten miesiąc</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-card-label">🏦 Przelew</div>
-        <div class="stat-card-val" style="font-size:22px;color:var(--blue)">${transMonth} zł</div>
-        <div class="stat-card-sub">ten miesiąc</div>
+        ${diffBadge(monDiff)}
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+          <div style="flex:1;background:rgba(255,255,255,0.04);border-radius:6px;padding:6px 8px;text-align:center;">
+            <div style="font-size:10px;color:var(--muted);">💵 Gotówka</div>
+            <div style="font-size:14px;font-weight:600;color:var(--accent);font-family:'DM Mono',monospace;">${cashMonth} zł</div>
+          </div>
+          <div style="flex:1;background:rgba(255,255,255,0.04);border-radius:6px;padding:6px 8px;text-align:center;">
+            <div style="font-size:10px;color:var(--muted);">🏦 Przelew</div>
+            <div style="font-size:14px;font-weight:600;color:var(--blue);font-family:'DM Mono',monospace;">${transMonth} zł</div>
+          </div>
+        </div>
       </div>
     </div>
 
     ${clientStats.length ? `<div class="stat-card">
       <div class="stat-card-label">Top klienci — ${now.toLocaleString('pl',{month:'long'})}</div>
-      ${clientStats.map((x,i)=>`<div class="month-bar" style="padding:10px 0;">
-        <div style="display:flex;align-items:center;gap:8px;min-width:130px;">
-          <div style="width:8px;height:8px;border-radius:50%;background:${x.c.color}"></div>
+      ${clientStats.map((x)=>`<div class="month-bar" style="padding:8px 0;">
+        <div style="display:flex;align-items:center;gap:6px;min-width:90px;">
+          <div style="width:8px;height:8px;border-radius:50%;background:${x.c.color};flex-shrink:0"></div>
           <span style="font-size:12px;">${x.c.name.split(' ')[0]}</span>
         </div>
         <div class="month-bar-wrap"><div class="month-bar-fill" style="width:${Math.round(x.earned/Math.max(...clientStats.map(s=>s.earned),1)*100)}%;background:${x.c.color}"></div></div>
-        <span class="month-amount" style="color:${x.c.color}">${x.earned} zł</span>
+        <div style="text-align:right;min-width:80px;">
+          <div class="month-amount" style="color:${x.c.color}">${x.earned} zł</div>
+          <div style="font-size:9px;color:var(--muted);">${x.cashC?'💵'+x.cashC+'zł ':''} ${x.transC?'🏦'+x.transC+'zł':''}</div>
+        </div>
       </div>`).join('')}
     </div>` : ''}
 
@@ -1420,10 +1553,17 @@ function renderStats() {
       ${months.map(m=>`
         <div class="month-bar">
           <span class="month-name">${m.label}</span>
-          <div class="month-bar-wrap"><div class="month-bar-fill" style="width:${Math.round(m.total/maxMonth*100)}%"></div></div>
+          <div class="month-bar-wrap" style="position:relative;">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:${m.total?Math.round(m.cash/m.total*100):0}%;background:var(--accent);border-radius:2px 0 0 2px;opacity:0.8;"></div>
+            <div style="position:absolute;right:0;top:0;bottom:0;width:${m.total?Math.round(m.trans/m.total*100):0}%;background:var(--blue);border-radius:0 2px 2px 0;opacity:0.8;"></div>
+          </div>
           <span class="month-amount">${m.total} zł</span>
         </div>
       `).join('')}
+      <div style="display:flex;gap:12px;margin-top:8px;font-size:10px;color:var(--muted);">
+        <span><span style="display:inline-block;width:8px;height:8px;background:var(--accent);border-radius:2px;margin-right:4px;"></span>Gotówka</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:var(--blue);border-radius:2px;margin-right:4px;"></span>Przelew</span>
+      </div>
     </div>
     <div class="stat-card" style="text-align:center;">
       <div class="stat-card-label">Łącznie zarobione</div>
