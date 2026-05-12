@@ -1771,7 +1771,7 @@ function openAddSlotForDate(dateStr, time, existingSlot) {
   document.getElementById('delete-slot-btn').style.display = (existingSlot&&!existingSlot.isTemplate)?'block':'none';
   const times=['06:00','07:00','08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00'];
   document.getElementById('time-grid').innerHTML = times.map(function(t){
-    return '<button class="time-opt '+(t===time?'sel':'')+'" onclick="selectTime(this,''+t+'')">'+t+'</button>';
+    return '<button class="time-opt '+(t===time?'sel':'')+'" onclick="selectTime(this,\''+t+'\')">'+t+
   }).join('');
   const opts = state.clients.map(function(c){
     return '<option value="'+c.id+'" '+(existingSlot&&existingSlot.clients&&existingSlot.clients[0]===c.id?'selected':'')+'>'+c.name+'</option>';
