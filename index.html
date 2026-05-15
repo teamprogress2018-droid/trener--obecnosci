@@ -1139,8 +1139,9 @@ function renderQuickEntryModal(mainClientId){
   var otherOpts=state.clients.filter(x=>x.id!==mainClientId)
     .map(x=>`<option value="${x.id}"${qeClients.includes(x.id)?' selected':''}>${x.name}</option>`).join('');
 
-  // Per-person payment rows
-  var payRows=qeClients.map(cid=>{
+  // Per-person payment rows — only valid clients
+  var validClients=qeClients.filter(id=>id&&state.clients.find(x=>x.id===id));
+  var payRows=validClients.map(cid=>{
     var cl=state.clients.find(x=>x.id===cid);if(!cl)return'';
     var pay=qePayments[cid]||'';
     var price=isPair?(cl.price2||cl.price1||0):(cl.price1||0);
@@ -1154,15 +1155,15 @@ function renderQuickEntryModal(mainClientId){
         <span style="font-family:'DM Mono',monospace;font-size:14px;font-weight:800;color:var(--ac)">${price} zł</span>
       </div>
       <div style="display:flex;gap:6px">
-        <button onclick="setQePay('${cid}','cash')" style="flex:1;padding:8px;border-radius:7px;border:1px solid ${pay==='cash'?'var(--yw)':'var(--b2)'};background:${pay==='cash'?'rgba(245,158,11,0.14)':'transparent'};color:${pay==='cash'?'var(--yw)':'var(--tx3)'};font-size:12px;font-weight:600;cursor:pointer">💵 Gotówka</button>
-        <button onclick="setQePay('${cid}','transfer')" style="flex:1;padding:8px;border-radius:7px;border:1px solid ${pay==='transfer'?'var(--bl)':'var(--b2)'};background:${pay==='transfer'?'rgba(96,165,250,0.14)':'transparent'};color:${pay==='transfer'?'var(--bl)':'var(--tx3)'};font-size:12px;font-weight:600;cursor:pointer">🏦 Przelew</button>
-        <button onclick="setQePay('${cid}','none')" style="flex:1;padding:8px;border-radius:7px;border:1px solid ${pay==='none'?'var(--rd)':'var(--b2)'};background:${pay==='none'?'rgba(248,113,113,0.1)':'transparent'};color:${pay==='none'?'var(--rd)':'var(--tx3)'};font-size:12px;font-weight:600;cursor:pointer">❓ Brak</button>
+        <button onclick="setQePay('${cid}','cash')" style="flex:1;padding:9px 4px;border-radius:7px;border:1px solid ${pay==='cash'?'var(--yw)':'var(--b2)'};background:${pay==='cash'?'rgba(245,158,11,0.18)':'var(--s2)'};color:${pay==='cash'?'var(--yw)':'var(--tx3)'};font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s">💵<br>Gotówka</button>
+        <button onclick="setQePay('${cid}','transfer')" style="flex:1;padding:9px 4px;border-radius:7px;border:1px solid ${pay==='transfer'?'var(--bl)':'var(--b2)'};background:${pay==='transfer'?'rgba(96,165,250,0.18)':'var(--s2)'};color:${pay==='transfer'?'var(--bl)':'var(--tx3)'};font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s">🏦<br>Przelew</button>
+        <button onclick="setQePay('${cid}','none')" style="flex:1;padding:9px 4px;border-radius:7px;border:1px solid ${pay==='none'?'var(--rd)':'var(--b2)'};background:${pay==='none'?'rgba(248,113,113,0.12)':'var(--s2)'};color:${pay==='none'?'var(--rd)':'var(--tx3)'};font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s">❓<br>Brak</button>
       </div>
     </div>`;
-  }).join('');
+  }).join('')||'<div style="font-size:12px;color:var(--tx3);padding:8px">Wybierz drugą osobę ↑</div>';
 
-  // Total
-  var totalAmt=qeClients.reduce((s,cid)=>{
+  // Total — only valid clients
+  var totalAmt=validClients.reduce((s,cid)=>{
     var cl=state.clients.find(x=>x.id===cid);if(!cl)return s;
     return s+(isPair?(cl.price2||cl.price1||0):(cl.price1||0));
   },0);
@@ -1226,12 +1227,14 @@ function setQePay(cid,pay){
 }
 
 function setQePersons(n,mainClientId){
+  var c=state.clients.find(x=>x.id===mainClientId);
   if(n===1){
     qeClients=[mainClientId];
     qePayments={};
   } else {
-    // keep main, add slot for second person to be chosen
-    if(qeClients.length<2)qeClients=[mainClientId,''];
+    // Try to auto-fill partner from profile
+    var partnerId=c&&c.partnerId&&state.clients.find(x=>x.id===c.partnerId)?c.partnerId:'';
+    qeClients=[mainClientId,partnerId];
   }
   renderQuickEntryModal(mainClientId);
 }
