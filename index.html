@@ -632,7 +632,10 @@ function renderSlotCard(slot){
       <button class="btn-s gr" onclick="openAttend('${slot.id}')">✓ Obecność</button>
       ${!isTemplate?`<button class="btn-s sm" onclick="deleteSlotById('${slot.id}')">🗑</button>`:''}
     </div>`:
-    `<div class="slot-actions">${!isTemplate?`<button class="btn-s sm" style="color:var(--tx3)" onclick="deleteSlotById('${slot.id}')">Usuń</button>`:'<span></span>'}</div>`;
+    `<div class="slot-actions">
+      <button class="btn-s" onclick="reopenAttend('${slot.id}')" style="color:var(--bl);border-color:var(--bl)">✏️ Edytuj</button>
+      <button class="btn-s sm rd" onclick="deleteSlotById('${slot.id}')" style="color:var(--rd);border-color:var(--rd)">🗑 Usuń</button>
+    </div>`;
 
   return `<div class="slot${clients.length?' has-clients':''}${isTemplate?' is-template':''}${isUnpaid?' unpaid':''}" id="sl-${slot.id.replace(/[^a-zA-Z0-9]/g,'_')}">
     <div class="slot-time">${slot.time}${tplLabel}${isUnpaid?'<span class="slot-time-badge" style="background:rgba(248,113,113,0.15);color:var(--rd)">⚠️ nie zapłacono</span>':''}</div>
@@ -651,10 +654,35 @@ function scrollToSlot(){
   if(el)el.scrollIntoView({behavior:'smooth',block:'center'});
 }
 
+function reopenAttend(slotId){
+  // Reset slot to undone so it can be re-confirmed
+  var slot=(state.slots||[]).find(s=>s.id===slotId);
+  if(slot){
+    slot.done=false;slot.absent=false;
+    save();renderToday();
+  }
+  openAttend(slotId);
+}
+
 function deleteSlotById(id){
-  if(!confirm('Usunąć slot?'))return;
+  if(!confirm('Usunąć ten trening?\n(zostanie też usunięty z historii)'))return;
+  // Find matching session and remove
+  var slot=(state.slots||[]).find(s=>s.id===id);
+  if(slot){
+    state.sessions=(state.sessions||[]).filter(s=>
+      !(s.date===slot.date&&s.time===slot.time&&
+        s.clients.slice().sort().join(',')===((slot.clients||[]).slice().sort().join(',')))
+    );
+    // Restore karnet if was done
+    if(slot.done){
+      (slot.clients||[]).forEach(cid=>{
+        var c=state.clients.find(x=>x.id===cid);
+        if(c&&c.payType!=='jednorazowy')c.packageLeft=(c.packageLeft||0)+1;
+      });
+    }
+  }
   state.slots=(state.slots||[]).filter(s=>s.id!==id);
-  save();renderToday();
+  save();renderToday();renderClients();flash('🗑 Trening usunięty');
 }
 
 // ══════════════════════════════════════════════════
