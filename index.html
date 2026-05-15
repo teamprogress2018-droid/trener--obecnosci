@@ -356,15 +356,15 @@ input,select,textarea,button{font-family:'DM Sans',sans-serif;}
   <div class="modal-title" id="client-modal-title">Nowy klient</div>
   <div class="fg"><label>Imię i Nazwisko</label><input type="text" id="c-name" placeholder="np. Anna Kowalska"></div>
   <div class="fg"><label>Telefon</label><input type="tel" id="c-phone" placeholder="+48 ..."></div>
-  <div class="fg"><label>Drugi uczestnik (opcjonalnie — jeśli chodzą w parze)</label>
-    <select id="c-partner" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid var(--b2);border-radius:8px;padding:11px 13px;color:var(--tx);font-size:14px;outline:none">
-      <option value="">— Brak / solo —</option>
-    </select>
-    <div style="font-size:10px;color:var(--tx3);margin-top:5px">Przy dodawaniu wejścia automatycznie pojawi się druga osoba</div>
-  </div>
   <div class="fg"><label>Cena — 1 osoba (zł)</label><input type="number" id="c-p1" placeholder="150" min="0"></div>
   <div class="fg"><label>Cena — para / 2 osoby (zł)</label><input type="number" id="c-p2" placeholder="200" min="0"></div>
-  <div class="fg"><label>Typ rozliczeń</label>
+  <div class="fg"><label>Typ klienta</label>
+    <div style="display:flex;gap:7px">
+      <button id="btn-solo-type" onclick="setClientType('solo')" class="btn-s gr" style="flex:1;padding:9px">👤 Solo</button>
+      <button id="btn-pair-type" onclick="setClientType('pair')" class="btn-s" style="flex:1;padding:9px">👥 Para / Duet</button>
+    </div>
+    <div style="font-size:10px;color:var(--tx3);margin-top:6px" id="clienttype-hint">Klient trenuje sam</div>
+  </div>
     <div style="display:flex;gap:7px">
       <button id="btn-karnet" onclick="setPayType('karnet')" class="btn-s gr" style="flex:1;padding:9px">🎫 Karnetowy</button>
       <button id="btn-jednorazowy" onclick="setPayType('jednorazowy')" class="btn-s" style="flex:1;padding:9px">💵 Jednorazowy</button>
@@ -995,10 +995,11 @@ function openClientCard(clientId){
   var total=left+used;
   var isJednorazowy=c.payType==='jednorazowy';
 
-  // Financials
-  var totalCash=sessions.reduce((s,x)=>{var p=x.payments?.[c.id];var isPair=(x.clients||[]).length>1;var price=isPair?(c.price2||c.price1||0):(c.price1||0);return s+(p==='cash'?price:0);},0);
-  var totalTransfer=sessions.reduce((s,x)=>{var p=x.payments?.[c.id];var isPair=(x.clients||[]).length>1;var price=isPair?(c.price2||c.price1||0):(c.price1||0);return s+(p==='transfer'?price:0);},0);
-  var totalNone=sessions.reduce((s,x)=>{var p=x.payments?.[c.id];var isPair=(x.clients||[]).length>1;var price=isPair?(c.price2||c.price1||0):(c.price1||0);return s+(!p||p==='none'?price:0);},0);
+  var isPairClient=c.clientType==='pair';
+  // Financials — use pair price if clientType==='pair'
+  var totalCash=sessions.reduce((s,x)=>{var p=x.payments?.[c.id];var usesPair=isPairClient||(x.clients||[]).length>1;var price=usesPair?(c.price2||c.price1||0):(c.price1||0);return s+(p==='cash'?price:0);},0);
+  var totalTransfer=sessions.reduce((s,x)=>{var p=x.payments?.[c.id];var usesPair=isPairClient||(x.clients||[]).length>1;var price=usesPair?(c.price2||c.price1||0):(c.price1||0);return s+(p==='transfer'?price:0);},0);
+  var totalNone=sessions.reduce((s,x)=>{var p=x.payments?.[c.id];var usesPair=isPairClient||(x.clients||[]).length>1;var price=usesPair?(c.price2||c.price1||0):(c.price1||0);return s+(!p||p==='none'?price:0);},0);
   var totalEarned=totalCash+totalTransfer;
   var lastSession=sessions[0]||null;
   var lastPayType=lastSession?(lastSession.payments?.[c.id]||'brak'):'—';
@@ -1119,10 +1120,9 @@ function quickEntry(clientId){
   var c=state.clients.find(x=>x.id===clientId);if(!c)return;
   var ex=document.getElementById('client-card-modal');if(ex)ex.remove();
   var ex2=document.getElementById('quick-entry-modal');if(ex2)ex2.remove();
-
-  // Auto-detect partner
-  if(c.partnerId&&state.clients.find(x=>x.id===c.partnerId)){
-    qeClients=[clientId,c.partnerId];
+  // Auto-set pair if clientType==='pair'
+  if(c.clientType==='pair'){
+    qeClients=[clientId,''];// pair mode, second person TBD
   } else {
     qeClients=[clientId];
   }
@@ -1133,11 +1133,14 @@ function quickEntry(clientId){
 function renderQuickEntryModal(mainClientId){
   var ex=document.getElementById('quick-entry-modal');if(ex)ex.remove();
   var c=state.clients.find(x=>x.id===mainClientId);if(!c)return;
-  var isPair=qeClients.length>1;
+
+  // validClients first — isPair depends on how many REAL clients are selected
+  var validClients=qeClients.filter(id=>id&&state.clients.find(x=>x.id===id));
+  var isPair=validClients.length>1;
 
   // Build other clients options (excluding main)
   var otherOpts=state.clients.filter(x=>x.id!==mainClientId)
-    .map(x=>`<option value="${x.id}"${qeClients.includes(x.id)?' selected':''}>${x.name}</option>`).join('');
+    .map(x=>`<option value="${x.id}"${validClients.includes(x.id)?' selected':''}>${x.name}</option>`).join('');
 
   // Per-person payment rows — only valid clients
   var validClients=qeClients.filter(id=>id&&state.clients.find(x=>x.id===id));
@@ -1230,18 +1233,19 @@ function setQePersons(n,mainClientId){
   var c=state.clients.find(x=>x.id===mainClientId);
   if(n===1){
     qeClients=[mainClientId];
-    qePayments={};
+    // clear partner payments
+    var partner=qeClients[1];
+    if(partner)delete qePayments[partner];
   } else {
-    // Try to auto-fill partner from profile
-    var partnerId=c&&c.partnerId&&state.clients.find(x=>x.id===c.partnerId)?c.partnerId:'';
+    // Try partner from profile, otherwise empty slot
+    var partnerId=(c&&c.partnerId&&state.clients.find(x=>x.id===c.partnerId))?c.partnerId:'';
     qeClients=[mainClientId,partnerId];
   }
   renderQuickEntryModal(mainClientId);
 }
 
 function setQePartner(mainClientId,partnerId){
-  if(!partnerId){qeClients=[mainClientId];renderQuickEntryModal(mainClientId);return;}
-  qeClients=[mainClientId,partnerId];
+  qeClients=[mainClientId,partnerId||''];
   renderQuickEntryModal(mainClientId);
 }
 
@@ -1915,7 +1919,14 @@ function deleteSlot(){
 // ══════════════════════════════════════════════════
 // CLIENT CRUD
 // ══════════════════════════════════════════════════
-var editClientId=null,selectedColor=COLORS[0],clientPayType='karnet';
+var editClientId=null,selectedColor=COLORS[0],clientPayType='karnet',clientType='solo';
+
+function setClientType(t){
+  clientType=t;
+  document.getElementById('btn-solo-type').className='btn-s '+(t==='solo'?'gr':'');
+  document.getElementById('btn-pair-type').className='btn-s '+(t==='pair'?'gr':'');
+  document.getElementById('clienttype-hint').textContent=t==='solo'?'Klient trenuje sam':'Klient zawsze trenuje w parze — cena pary naliczana automatycznie';
+}
 
 function setPayType(t){
   clientPayType=t;
@@ -1933,7 +1944,7 @@ function openAddClient(){
   document.getElementById('sched-builder').innerHTML='';
   renderColorPick(null);
   setPayType('karnet');
-  fillPartnerSelect(null,null);
+  setClientType('solo');
   document.getElementById('ov-client').classList.add('on');
 }
 function openEditClient(id){
@@ -1948,19 +1959,11 @@ function openEditClient(id){
   document.getElementById('del-client-btn').style.display='block';
   loadSched(c.schedule||[]);renderColorPick(c.color);
   setPayType(c.payType||'karnet');
-  fillPartnerSelect(id,c.partnerId||null);
+  setClientType(c.clientType||'solo');
   document.getElementById('ov-client').classList.add('on');
 }
 
-function fillPartnerSelect(currentId,selectedPartnerId){
-  var sel=document.getElementById('c-partner');if(!sel)return;
-  var opts=state.clients
-    .filter(c=>c.id!==currentId)
-    .map(c=>`<option value="${c.id}"${c.id===selectedPartnerId?' selected':''}>${c.name}</option>`)
-    .join('');
-  sel.innerHTML='<option value="">— Brak / solo —</option>'+opts;
-  sel.value=selectedPartnerId||'';
-}
+function fillPartnerSelect(a,b){}
 function renderColorPick(cur){
   selectedColor=cur||COLORS[0];
   document.getElementById('color-pick').innerHTML=COLORS.map(col=>`<div class="cpick-dot" style="background:${col};border-color:${col===selectedColor?'#fff':'transparent'}" onclick="pickColor('${col}',this)"></div>`).join('');
@@ -1979,10 +1982,10 @@ function saveClient(){
   var sched=getSched();
   if(editClientId){
     var c=state.clients.find(x=>x.id===editClientId);
-    if(c){c.name=name;c.phone=document.getElementById('c-phone').value;c.price1=price1;c.price2=price2;c.color=selectedColor;c.schedule=sched;c.payType=clientPayType;c.partnerId=document.getElementById('c-partner').value||null;if(pkgNew>0)c.packageLeft=(c.packageLeft||0)+pkgNew;syncTemplates(editClientId,sched);}
+    if(c){c.name=name;c.phone=document.getElementById('c-phone').value;c.price1=price1;c.price2=price2;c.color=selectedColor;c.schedule=sched;c.payType=clientPayType;c.clientType=clientType;if(pkgNew>0)c.packageLeft=(c.packageLeft||0)+pkgNew;syncTemplates(editClientId,sched);}
   } else {
     var newId='c-'+Date.now();
-    state.clients.push({id:newId,name,phone:document.getElementById('c-phone').value,price1,price2,color:selectedColor,packageLeft:pkgNew,schedule:sched,payType:clientPayType,partnerId:document.getElementById('c-partner').value||null});
+    state.clients.push({id:newId,name,phone:document.getElementById('c-phone').value,price1,price2,color:selectedColor,packageLeft:pkgNew,schedule:sched,payType:clientPayType,clientType});
     syncTemplates(newId,sched);
   }
   save();closeOv('ov-client');renderClients();flash('✓ Klient zapisany');
