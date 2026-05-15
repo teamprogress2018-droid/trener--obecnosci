@@ -2012,8 +2012,21 @@ function addSchedRow(day,time,type){
   day=day||'1';time=time||'10:00';type=type||'1';
   var el=document.getElementById('sched-builder');
   var row=document.createElement('div');row.className='sched-row';
-  row.innerHTML=`<select class="sched-sel" style="flex:1">${DAY_OPTS.map(d=>`<option value="${d.v}"${d.v===day?' selected':''}>${d.l}</option>`).join('')}</select><input type="time" class="sched-sel" style="width:88px" value="${time}"><select class="sched-sel" style="width:68px"><option value="1"${type==='1'?' selected':''}>👤</option><option value="2"${type==='2'?' selected':''}>👥</option></select><button type="button" class="sched-del" onclick="this.parentElement.remove()">✕</button>`;
+  var rowId='sr-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+  row.id=rowId;
+  row.innerHTML=`
+    <select class="sched-sel" style="flex:1">${DAY_OPTS.map(d=>`<option value="${d.v}"${d.v===day?' selected':''}>${d.l}</option>`).join('')}</select>
+    <input type="time" class="sched-sel" style="width:88px" value="${time}">
+    <select class="sched-sel" style="width:68px">
+      <option value="1"${type==='1'?' selected':''}>👤</option>
+      <option value="2"${type==='2'?' selected':''}>👥</option>
+    </select>
+    <button type="button" class="sched-del" style="background:none;border:1px solid var(--rd);color:var(--rd);border-radius:7px;padding:5px 10px;cursor:pointer;font-size:13px;flex-shrink:0" onclick="deleteSchedRow('${rowId}')">✕</button>`;
   el.appendChild(row);
+}
+function deleteSchedRow(id){
+  var row=document.getElementById(id);
+  if(row)row.remove();
 }
 function getSched(){return Array.from(document.querySelectorAll('#sched-builder .sched-row')).map(r=>{var s=r.querySelectorAll('select,input');return{day:s[0].value,time:s[1].value,type:s[2].value};}).filter(r=>r.time);}
 function loadSched(sched){document.getElementById('sched-builder').innerHTML='';(sched||[]).forEach(s=>addSchedRow(s.day,s.time,s.type||'1'));}
