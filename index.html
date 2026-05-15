@@ -1100,79 +1100,179 @@ function openClientCard(clientId){
 }
 
 // ── QUICK ENTRY ────────────────────────────────────────────
+var qeClients=[], qePayments={};
+
 function quickEntry(clientId){
   var c=state.clients.find(x=>x.id===clientId);if(!c)return;
   var ex=document.getElementById('client-card-modal');if(ex)ex.remove();
   var ex2=document.getElementById('quick-entry-modal');if(ex2)ex2.remove();
 
+  qeClients=[clientId];
+  qePayments={};
+
+  renderQuickEntryModal(clientId);
+}
+
+function renderQuickEntryModal(mainClientId){
+  var ex=document.getElementById('quick-entry-modal');if(ex)ex.remove();
+  var c=state.clients.find(x=>x.id===mainClientId);if(!c)return;
+  var isPair=qeClients.length>1;
+
+  // Build other clients options (excluding main)
+  var otherOpts=state.clients.filter(x=>x.id!==mainClientId)
+    .map(x=>`<option value="${x.id}"${qeClients.includes(x.id)?' selected':''}>${x.name}</option>`).join('');
+
+  // Per-person payment rows
+  var payRows=qeClients.map(cid=>{
+    var cl=state.clients.find(x=>x.id===cid);if(!cl)return'';
+    var pay=qePayments[cid]||'';
+    var price=isPair?(cl.price2||cl.price1||0):(cl.price1||0);
+    return `<div style="background:var(--s3);border-radius:9px;padding:10px 12px;margin-bottom:7px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:7px">
+          <div style="width:8px;height:8px;border-radius:50%;background:${cl.color}"></div>
+          <span style="font-weight:600;font-size:13px">${cl.name}</span>
+          <span style="font-size:10px;color:var(--tx3);font-family:'DM Mono',monospace">${cl.payType==='jednorazowy'?'jednorazowy':'karnet '+cl.packageLeft}</span>
+        </div>
+        <span style="font-family:'DM Mono',monospace;font-size:14px;font-weight:800;color:var(--ac)">${price} zł</span>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button onclick="setQePay('${cid}','cash')" style="flex:1;padding:8px;border-radius:7px;border:1px solid ${pay==='cash'?'var(--yw)':'var(--b2)'};background:${pay==='cash'?'rgba(245,158,11,0.14)':'transparent'};color:${pay==='cash'?'var(--yw)':'var(--tx3)'};font-size:12px;font-weight:600;cursor:pointer">💵 Gotówka</button>
+        <button onclick="setQePay('${cid}','transfer')" style="flex:1;padding:8px;border-radius:7px;border:1px solid ${pay==='transfer'?'var(--bl)':'var(--b2)'};background:${pay==='transfer'?'rgba(96,165,250,0.14)':'transparent'};color:${pay==='transfer'?'var(--bl)':'var(--tx3)'};font-size:12px;font-weight:600;cursor:pointer">🏦 Przelew</button>
+        <button onclick="setQePay('${cid}','none')" style="flex:1;padding:8px;border-radius:7px;border:1px solid ${pay==='none'?'var(--rd)':'var(--b2)'};background:${pay==='none'?'rgba(248,113,113,0.1)':'transparent'};color:${pay==='none'?'var(--rd)':'var(--tx3)'};font-size:12px;font-weight:600;cursor:pointer">❓ Brak</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Total
+  var totalAmt=qeClients.reduce((s,cid)=>{
+    var cl=state.clients.find(x=>x.id===cid);if(!cl)return s;
+    return s+(isPair?(cl.price2||cl.price1||0):(cl.price1||0));
+  },0);
+
   var modal=document.createElement('div');modal.className='ov on';modal.id='quick-entry-modal';
-  modal.innerHTML=`<div class="modal">
+  modal.innerHTML=`<div class="modal" style="max-height:88dvh;overflow-y:auto">
     <button class="mc" onclick="document.getElementById('quick-entry-modal').remove()">✕</button>
     <div class="modal-title">✅ Dodaj wejście</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:12px;background:var(--s3);border-radius:10px">
-      <div style="width:36px;height:36px;border-radius:50%;background:${c.color}22;color:${c.color};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">${c.name[0]}</div>
-      <div>
+
+    <!-- KLIENT GŁÓWNY -->
+    <div style="display:flex;align-items:center;gap:10px;padding:11px;background:var(--s3);border-radius:10px;margin-bottom:14px">
+      <div style="width:36px;height:36px;border-radius:50%;background:${c.color}22;color:${c.color};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex-shrink:0">${c.name[0]}</div>
+      <div style="flex:1">
         <div style="font-weight:600">${c.name}</div>
-        <div style="font-size:11px;color:var(--tx3);font-family:'DM Mono',monospace">${c.payType==='jednorazowy'?'Jednorazowy · '+c.price1+' zł':'Karnet · zostało '+(c.packageLeft||0)}</div>
+        <div style="font-size:10px;color:var(--tx3);font-family:'DM Mono',monospace">${c.payType==='jednorazowy'?'Jednorazowy · solo '+c.price1+' zł · para '+(c.price2||c.price1)+' zł':'Karnet · zostało '+(c.packageLeft||0)}</div>
       </div>
     </div>
-    <div class="fg"><label>Data wejścia</label><input type="date" id="qe-date" value="${todayKey()}"></div>
-    <div class="fg"><label>Godzina</label><input type="time" id="qe-time" value="${pad(new Date().getHours())}:00"></div>
-    <div style="font-size:10px;color:var(--tx3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Płatność</div>
-    <div style="display:flex;gap:7px;margin-bottom:16px">
-      <button id="qe-cash" onclick="selQePay('cash')" class="btn-s" style="flex:1;padding:11px">💵 Gotówka</button>
-      <button id="qe-transfer" onclick="selQePay('transfer')" class="btn-s" style="flex:1;padding:11px">🏦 Przelew</button>
-      <button id="qe-none" onclick="selQePay('none')" class="btn-s" style="flex:1;padding:11px">❓ Brak</button>
+
+    <!-- SOLO / PARA -->
+    <div style="font-size:10px;color:var(--tx3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Ile osób na treningu?</div>
+    <div style="display:flex;gap:7px;margin-bottom:14px">
+      <button onclick="setQePersons(1,'${mainClientId}')" style="flex:1;padding:11px;border-radius:9px;border:2px solid ${!isPair?'var(--ac)':'var(--b2)'};background:${!isPair?'rgba(232,48,42,0.1)':'transparent'};color:${!isPair?'var(--ac)':'var(--tx3)'};font-size:13px;font-weight:700;cursor:pointer">👤 Solo<br><span style="font-size:11px;font-family:'DM Mono',monospace">${c.price1||0} zł</span></button>
+      <button onclick="setQePersons(2,'${mainClientId}')" style="flex:1;padding:11px;border-radius:9px;border:2px solid ${isPair?'var(--ac)':'var(--b2)'};background:${isPair?'rgba(232,48,42,0.1)':'transparent'};color:${isPair?'var(--ac)':'var(--tx3)'};font-size:13px;font-weight:700;cursor:pointer">👥 Para<br><span style="font-size:11px;font-family:'DM Mono',monospace">${c.price2||c.price1||0} zł</span></button>
     </div>
-    <button class="btn-p" onclick="confirmQuickEntry('${clientId}')">✅ Zapisz wejście</button>
+
+    <!-- DRUGA OSOBA (jeśli para) -->
+    ${isPair?`<div class="fg" style="margin-bottom:14px">
+      <label>Druga osoba</label>
+      <select onchange="setQePartner('${mainClientId}',this.value)" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid var(--b2);border-radius:8px;padding:11px 13px;color:var(--tx);font-size:14px;outline:none">
+        <option value="">— Wybierz drugą osobę —</option>
+        ${otherOpts}
+      </select>
+    </div>`:''}
+
+    <!-- DATA I GODZINA -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <div class="fg" style="margin:0"><label>Data</label><input type="date" id="qe-date" value="${todayKey()}"></div>
+      <div class="fg" style="margin:0"><label>Godzina</label><input type="time" id="qe-time" value="${pad(new Date().getHours())}:00"></div>
+    </div>
+
+    <!-- PŁATNOŚĆ PER OSOBA -->
+    <div style="font-size:10px;color:var(--tx3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Płatność per osoba</div>
+    ${payRows}
+
+    <!-- SUMA -->
+    <div style="background:var(--s3);border-radius:9px;padding:11px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:12px;color:var(--tx3)">Łącznie do zapłaty</div>
+      <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--ac)">${totalAmt} zł</div>
+    </div>
+
+    <button class="btn-p" onclick="confirmQuickEntry2('${mainClientId}')">✅ Zapisz wejście</button>
   </div>`;
   modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
   document.body.appendChild(modal);
 }
 
-var qePay='cash';
-function selQePay(p){
-  qePay=p;
-  document.getElementById('qe-cash').className='btn-s '+(p==='cash'?'gr':'');
-  document.getElementById('qe-transfer').className='btn-s '+(p==='transfer'?'gr':'');
-  document.getElementById('qe-none').className='btn-s '+(p==='none'?'rd':'');
+function setQePay(cid,pay){
+  qePayments[cid]=pay;
+  var mainId=qeClients[0];
+  renderQuickEntryModal(mainId);
 }
 
-function confirmQuickEntry(clientId){
-  var c=state.clients.find(x=>x.id===clientId);if(!c)return;
+function setQePersons(n,mainClientId){
+  if(n===1){
+    qeClients=[mainClientId];
+    qePayments={};
+  } else {
+    // keep main, add slot for second person to be chosen
+    if(qeClients.length<2)qeClients=[mainClientId,''];
+  }
+  renderQuickEntryModal(mainClientId);
+}
+
+function setQePartner(mainClientId,partnerId){
+  if(!partnerId){qeClients=[mainClientId];renderQuickEntryModal(mainClientId);return;}
+  qeClients=[mainClientId,partnerId];
+  renderQuickEntryModal(mainClientId);
+}
+
+function confirmQuickEntry2(mainClientId){
   var date=document.getElementById('qe-date').value||todayKey();
   var time=document.getElementById('qe-time').value||'09:00';
-  var isPair=false;
-  var price=c.price1||0;
-  var cashT=qePay==='cash'?price:0;
-  var transT=qePay==='transfer'?price:0;
+  var clients=qeClients.filter(Boolean);
+  if(!clients.length){flash('⚠️ Brak klientów!');return;}
+  var isPair=clients.length>1;
 
-  // FIX: check duplicate
-  var existing=(state.sessions||[]).find(s=>s.date===date&&s.time===time&&s.clients.includes(clientId));
+  // Check duplicate
+  var existing=(state.sessions||[]).find(s=>s.date===date&&s.time===time&&clients.every(id=>s.clients.includes(id)));
   if(existing){flash('⚠️ To wejście już istnieje!');return;}
 
-  // Create slot
-  var slotId='slot-'+Date.now();
+  var cashT=0,transT=0,total=0;
+  var payments={};
+  clients.forEach(cid=>{
+    var cl=state.clients.find(x=>x.id===cid);if(!cl)return;
+    var price=isPair?(cl.price2||cl.price1||0):(cl.price1||0);
+    var pay=qePayments[cid]||'none';
+    payments[cid]=pay;
+    if(pay==='cash')cashT+=price;
+    else if(pay==='transfer')transT+=price;
+    total+=price;
+  });
+
+  // Create slot + session
   if(!state.slots)state.slots=[];
-  state.slots.push({id:slotId,time,date,clients:[clientId],isPair:false,done:true,absent:false,payments:{[clientId]:qePay},total:price,cashTotal:cashT,transferTotal:transT});
+  state.slots.push({id:'slot-'+Date.now(),time,date,clients,isPair,done:true,absent:false,payments,total,cashTotal:cashT,transferTotal:transT});
+  state.sessions.push({id:'ses-'+Date.now(),date,time,clients,payments,total,cashTotal:cashT,transferTotal:transT,isPair});
 
-  // Create session
-  state.sessions.push({id:'ses-'+Date.now(),date,time,clients:[clientId],payments:{[clientId]:qePay},total:price,cashTotal:cashT,transferTotal:transT,isPair:false});
-
-  // Deduct karnet
+  // Deduct karnety
   var reminders=[];
-  if(c.payType!=='jednorazowy'&&(c.packageLeft||0)>0){
-    c.packageLeft--;
-    if(c.packageLeft===0)reminders.push({c,type:'empty'});
-    else if(c.packageLeft===1)reminders.push({c,type:'last'});
-  }
+  clients.forEach(cid=>{
+    var cl=state.clients.find(x=>x.id===cid);if(!cl)return;
+    if(cl.payType!=='jednorazowy'&&(cl.packageLeft||0)>0){
+      cl.packageLeft--;
+      if(cl.packageLeft===0)reminders.push({c:cl,type:'empty'});
+      else if(cl.packageLeft===1)reminders.push({c:cl,type:'last'});
+    }
+  });
 
   save();
   var ex=document.getElementById('quick-entry-modal');if(ex)ex.remove();
   renderToday();renderClients();
-  flash('✅ Wejście dodane · '+price+' zł');
+  flash('✅ Wejście dodane · '+total+' zł · '+(isPair?'para':'solo'));
   if(reminders.length)setTimeout(()=>showKarnetReminder(reminders),700);
 }
+
+var qePay='cash';
+function selQePay(p){qePay=p;}
 
 // ── QUICK PAYMENT (oznacz wpłatę na ostatniej sesji) ───────
 function quickPayment(clientId){
