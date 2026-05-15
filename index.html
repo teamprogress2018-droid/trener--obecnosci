@@ -1115,19 +1115,15 @@ function openClientCard(clientId){
 }
 
 // ── QUICK ENTRY ────────────────────────────────────────────
-var qeClients=[], qePayments={};
+var qeClients=[], qePayments={}, qePairMode=false;
 
 function quickEntry(clientId){
   var c=state.clients.find(x=>x.id===clientId);if(!c)return;
   var ex=document.getElementById('client-card-modal');if(ex)ex.remove();
   var ex2=document.getElementById('quick-entry-modal');if(ex2)ex2.remove();
-  // Auto-set pair if clientType==='pair'
-  if(c.clientType==='pair'){
-    qeClients=[clientId,''];// pair mode, second person TBD
-  } else {
-    qeClients=[clientId];
-  }
+  qeClients=[clientId];
   qePayments={};
+  qePairMode=(c.clientType==='pair');
   renderQuickEntryModal(clientId);
 }
 
@@ -1135,9 +1131,11 @@ function renderQuickEntryModal(mainClientId){
   var ex=document.getElementById('quick-entry-modal');if(ex)ex.remove();
   var c=state.clients.find(x=>x.id===mainClientId);if(!c)return;
 
-  // validClients first — isPair depends on how many REAL clients are selected
+  // validClients = confirmed real clients
   var validClients=qeClients.filter(id=>id&&state.clients.find(x=>x.id===id));
-  var isPair=validClients.length>1;
+  // isPair = pair mode is ON (regardless of whether 2nd person chosen yet)
+  var isPair=qePairMode;
+  var hasPartner=validClients.length>1;
 
   // Build other clients options (excluding main)
   var otherOpts=state.clients.filter(x=>x.id!==mainClientId)
@@ -1145,6 +1143,8 @@ function renderQuickEntryModal(mainClientId){
 
   // Per-person payment rows — only valid clients
   var validClients=qeClients.filter(id=>id&&state.clients.find(x=>x.id===id));
+  // isPair = pair mode ON (set by button, not by count)
+  var isPair=qePairMode;
   var payRows=validClients.map(cid=>{
     var cl=state.clients.find(x=>x.id===cid);if(!cl)return'';
     var pay=qePayments[cid]||'';
@@ -1231,31 +1231,33 @@ function setQePay(cid,pay){
 }
 
 function setQePersons(n,mainClientId){
-  var c=state.clients.find(x=>x.id===mainClientId);
   if(n===1){
+    qePairMode=false;
     qeClients=[mainClientId];
-    // clear partner payments
-    var partner=qeClients[1];
-    if(partner)delete qePayments[partner];
   } else {
-    // Try partner from profile, otherwise empty slot
-    var partnerId=(c&&c.partnerId&&state.clients.find(x=>x.id===c.partnerId))?c.partnerId:'';
-    qeClients=[mainClientId,partnerId];
+    qePairMode=true;
+    // keep only main client, partner chosen via dropdown
+    qeClients=[mainClientId];
   }
   renderQuickEntryModal(mainClientId);
 }
 
 function setQePartner(mainClientId,partnerId){
-  qeClients=[mainClientId,partnerId||''];
+  if(!partnerId){
+    qeClients=[mainClientId];
+  } else {
+    qeClients=[mainClientId,partnerId];
+  }
+  qePairMode=true;
   renderQuickEntryModal(mainClientId);
 }
 
 function confirmQuickEntry2(mainClientId){
   var date=document.getElementById('qe-date').value||todayKey();
   var time=document.getElementById('qe-time').value||'09:00';
-  var clients=qeClients.filter(Boolean);
+  var clients=qeClients.filter(id=>id&&state.clients.find(x=>x.id===id));
   if(!clients.length){flash('⚠️ Brak klientów!');return;}
-  var isPair=clients.length>1;
+  var isPair=qePairMode;
 
   // Check duplicate
   var existing=(state.sessions||[]).find(s=>s.date===date&&s.time===time&&clients.every(id=>s.clients.includes(id)));
