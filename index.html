@@ -1509,8 +1509,11 @@ function renderStats(){
   var clientStats=state.clients.map(c=>{
     var ses=monthS.filter(s=>s.clients.includes(c.id));
     var earned=ses.reduce((sum,s)=>{
-      var isPair=(s.clients||[]).length>1;
-      return sum+(isPair?(c.price2||c.price1||0):(c.price1||0));
+      // Use actual paid amount from session payments
+      var pay=s.payments?.[c.id];
+      if(!pay||pay==='none')return sum;
+      var isPairSession=(s.clients||[]).length>1||c.clientType==='pair';
+      return sum+(isPairSession?(c.price2||c.price1||0):(c.price1||0));
     },0);
     return{c,count:ses.length,earned};
   }).filter(x=>x.count>0).sort((a,b)=>b.earned-a.earned);
