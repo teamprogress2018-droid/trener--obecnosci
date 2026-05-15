@@ -351,7 +351,7 @@ input,select,textarea,button{font-family:'DM Sans',sans-serif;}
   <button class="btn-d" id="del-slot-btn" style="display:none" onclick="deleteSlot()">Usuń slot</button>
 </div></div>
 
-<div class="ov" id="ov-client"><div class="modal">
+<div class="ov" id="ov-client"><div class="modal" style="max-height:90dvh;overflow-y:auto;padding-bottom:30px">
   <button class="mc" onclick="closeOv('ov-client')">✕</button>
   <div class="modal-title" id="client-modal-title">Nowy klient</div>
   <div class="fg"><label>Imię i Nazwisko</label><input type="text" id="c-name" placeholder="np. Anna Kowalska"></div>
@@ -1923,17 +1923,24 @@ var editClientId=null,selectedColor=COLORS[0],clientPayType='karnet',clientType=
 
 function setClientType(t){
   clientType=t;
-  document.getElementById('btn-solo-type').className='btn-s '+(t==='solo'?'gr':'');
-  document.getElementById('btn-pair-type').className='btn-s '+(t==='pair'?'gr':'');
-  document.getElementById('clienttype-hint').textContent=t==='solo'?'Klient trenuje sam':'Klient zawsze trenuje w parze — cena pary naliczana automatycznie';
+  var b1=document.getElementById('btn-solo-type');
+  var b2=document.getElementById('btn-pair-type');
+  var hint=document.getElementById('clienttype-hint');
+  if(b1)b1.className='btn-s '+(t==='solo'?'gr':'');
+  if(b2)b2.className='btn-s '+(t==='pair'?'gr':'');
+  if(hint)hint.textContent=t==='solo'?'Klient trenuje sam':'Klient zawsze trenuje w parze — cena pary naliczana automatycznie';
 }
 
 function setPayType(t){
   clientPayType=t;
-  document.getElementById('btn-karnet').className='btn-s '+(t==='karnet'?'gr':'');
-  document.getElementById('btn-jednorazowy').className='btn-s '+(t==='jednorazowy'?'gr':'');
-  document.getElementById('paytype-hint').textContent=t==='karnet'?'Klient kupuje pakiet treningów z góry':'Klient płaci gotówką lub przelewem za każdy trening osobno';
-  document.getElementById('c-pkg-wrap').style.display=t==='karnet'?'block':'none';
+  var bk=document.getElementById('btn-karnet');
+  var bj=document.getElementById('btn-jednorazowy');
+  var hint=document.getElementById('paytype-hint');
+  var wrap=document.getElementById('c-pkg-wrap');
+  if(bk)bk.className='btn-s '+(t==='karnet'?'gr':'');
+  if(bj)bj.className='btn-s '+(t==='jednorazowy'?'gr':'');
+  if(hint)hint.textContent=t==='karnet'?'Klient kupuje pakiet treningów z góry':'Klient płaci gotówką lub przelewem za każdy trening osobno';
+  if(wrap)wrap.style.display=t==='karnet'?'block':'none';
 }
 
 function openAddClient(){
