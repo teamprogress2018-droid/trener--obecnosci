@@ -719,10 +719,10 @@ function renderAttendModal(){
   var slot=(state.slots||[]).find(s=>s.id===attendSlotId)||attendVirtual||getSlotsForDate(todayKey()).find(s=>s.id===attendSlotId);
   var slotClients=slot?(slot.clients||[]):[];
 
-  // Show slot clients first, then rest — always show ALL clients
-  var slotSet=new Set(slotClients);
-  var ordered=[...slotClients,...state.clients.filter(c=>!slotSet.has(c.id)).map(c=>c.id)];
-  var clientsToShow=ordered.map(id=>state.clients.find(c=>c.id===id)).filter(Boolean);
+  // Show ONLY slot clients — if slot empty then show all
+  var clientsToShow=slotClients.length>0
+    ?slotClients.map(id=>state.clients.find(c=>c.id===id)).filter(Boolean)
+    :state.clients;
 
   var isPair=attendSelected.length>1;
 
@@ -732,17 +732,15 @@ function renderAttendModal(){
     <div style="font-size:10px;color:var(--tx3);font-family:'DM Mono',monospace;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">
       Krok 1 — Kto przyszedł? <span style="color:var(--ac)">(${attendSelected.length} os.)</span>
     </div>
-    ${slotClients.length?`<div style="font-size:10px;color:var(--tx3);margin-bottom:6px">📌 Przypisani do slotu:</div>`:''}
-    ${clientsToShow.map((c,i)=>{
+    ${clientsToShow.map((c)=>{
+      if(!c)return'';
       var sel=attendSelected.includes(c.id);
       var pk=karnetTag(c);
-      var isSlotClient=slotSet.has(c.id);
       var priceNow=isPair&&sel?(c.price2||c.price1||0):(c.price1||0);
       var priceSolo=c.price1||0;
       var pricePair=c.price2||c.price1||0;
       return `
-        ${i===slotClients.length&&slotClients.length>0?`<div style="font-size:10px;color:var(--tx3);margin:8px 0 6px;border-top:1px solid var(--b1);padding-top:8px">Pozostali klienci:</div>`:''}
-        <div class="client-row-sel${sel?' on':''}" onclick="toggleAttendClient('${c.id}')" style="${!isSlotClient?'opacity:0.7':''}">
+        <div class="client-row-sel${sel?' on':''}" onclick="toggleAttendClient('${c.id}')">
           <div class="crs-left">
             <div style="width:9px;height:9px;border-radius:50%;background:${c.color};flex-shrink:0"></div>
             <div>
@@ -1505,7 +1503,7 @@ function renderStats(){
   var allTrans=allS.reduce((s,x)=>s+(x.transferTotal||0),0);
 
   // Karnet expiry
-  var expiring=state.clients.filter(c=>(c.packageLeft||0)<=2&&state.sessions.some(s=>s.clients.includes(c.id)));
+  var expiring=state.clients.filter(c=>c.payType!=='jednorazowy'&&(c.packageLeft||0)<=2&&state.sessions.some(s=>s.clients.includes(c.id)));
 
   // Client stats this month
   var clientStats=state.clients.map(c=>{
