@@ -356,6 +356,12 @@ input,select,textarea,button{font-family:'DM Sans',sans-serif;}
   <div class="modal-title" id="client-modal-title">Nowy klient</div>
   <div class="fg"><label>Imię i Nazwisko</label><input type="text" id="c-name" placeholder="np. Anna Kowalska"></div>
   <div class="fg"><label>Telefon</label><input type="tel" id="c-phone" placeholder="+48 ..."></div>
+  <div class="fg"><label>Drugi uczestnik (opcjonalnie — jeśli chodzą w parze)</label>
+    <select id="c-partner" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid var(--b2);border-radius:8px;padding:11px 13px;color:var(--tx);font-size:14px;outline:none">
+      <option value="">— Brak / solo —</option>
+    </select>
+    <div style="font-size:10px;color:var(--tx3);margin-top:5px">Przy dodawaniu wejścia automatycznie pojawi się druga osoba</div>
+  </div>
   <div class="fg"><label>Cena — 1 osoba (zł)</label><input type="number" id="c-p1" placeholder="150" min="0"></div>
   <div class="fg"><label>Cena — para / 2 osoby (zł)</label><input type="number" id="c-p2" placeholder="200" min="0"></div>
   <div class="fg"><label>Typ rozliczeń</label>
@@ -665,8 +671,15 @@ function openAttend(slotId){
   }
   attendSelected=slot?(slot.clients||[]).slice():[];
   attendPayments={};
-  // Pre-fill payments if slot has existing ones
   if(slot&&slot.payments)Object.assign(attendPayments,slot.payments);
+
+  // Auto-add partner if slot has 1 client with a partner assigned
+  if(attendSelected.length===1){
+    var c=state.clients.find(x=>x.id===attendSelected[0]);
+    if(c&&c.partnerId&&state.clients.find(x=>x.id===c.partnerId)){
+      if(!attendSelected.includes(c.partnerId))attendSelected.push(c.partnerId);
+    }
+  }
 
   document.getElementById('attend-title').textContent='Trening '+(slot?slot.time:'');
   renderAttendModal();
@@ -1107,9 +1120,13 @@ function quickEntry(clientId){
   var ex=document.getElementById('client-card-modal');if(ex)ex.remove();
   var ex2=document.getElementById('quick-entry-modal');if(ex2)ex2.remove();
 
-  qeClients=[clientId];
+  // Auto-detect partner
+  if(c.partnerId&&state.clients.find(x=>x.id===c.partnerId)){
+    qeClients=[clientId,c.partnerId];
+  } else {
+    qeClients=[clientId];
+  }
   qePayments={};
-
   renderQuickEntryModal(clientId);
 }
 
@@ -1913,6 +1930,7 @@ function openAddClient(){
   document.getElementById('sched-builder').innerHTML='';
   renderColorPick(null);
   setPayType('karnet');
+  fillPartnerSelect(null,null);
   document.getElementById('ov-client').classList.add('on');
 }
 function openEditClient(id){
@@ -1927,7 +1945,18 @@ function openEditClient(id){
   document.getElementById('del-client-btn').style.display='block';
   loadSched(c.schedule||[]);renderColorPick(c.color);
   setPayType(c.payType||'karnet');
+  fillPartnerSelect(id,c.partnerId||null);
   document.getElementById('ov-client').classList.add('on');
+}
+
+function fillPartnerSelect(currentId,selectedPartnerId){
+  var sel=document.getElementById('c-partner');if(!sel)return;
+  var opts=state.clients
+    .filter(c=>c.id!==currentId)
+    .map(c=>`<option value="${c.id}"${c.id===selectedPartnerId?' selected':''}>${c.name}</option>`)
+    .join('');
+  sel.innerHTML='<option value="">— Brak / solo —</option>'+opts;
+  sel.value=selectedPartnerId||'';
 }
 function renderColorPick(cur){
   selectedColor=cur||COLORS[0];
@@ -1947,10 +1976,10 @@ function saveClient(){
   var sched=getSched();
   if(editClientId){
     var c=state.clients.find(x=>x.id===editClientId);
-    if(c){c.name=name;c.phone=document.getElementById('c-phone').value;c.price1=price1;c.price2=price2;c.color=selectedColor;c.schedule=sched;c.payType=clientPayType;if(pkgNew>0)c.packageLeft=(c.packageLeft||0)+pkgNew;syncTemplates(editClientId,sched);}
+    if(c){c.name=name;c.phone=document.getElementById('c-phone').value;c.price1=price1;c.price2=price2;c.color=selectedColor;c.schedule=sched;c.payType=clientPayType;c.partnerId=document.getElementById('c-partner').value||null;if(pkgNew>0)c.packageLeft=(c.packageLeft||0)+pkgNew;syncTemplates(editClientId,sched);}
   } else {
     var newId='c-'+Date.now();
-    state.clients.push({id:newId,name,phone:document.getElementById('c-phone').value,price1,price2,color:selectedColor,packageLeft:pkgNew,schedule:sched,payType:clientPayType});
+    state.clients.push({id:newId,name,phone:document.getElementById('c-phone').value,price1,price2,color:selectedColor,packageLeft:pkgNew,schedule:sched,payType:clientPayType,partnerId:document.getElementById('c-partner').value||null});
     syncTemplates(newId,sched);
   }
   save();closeOv('ov-client');renderClients();flash('✓ Klient zapisany');
