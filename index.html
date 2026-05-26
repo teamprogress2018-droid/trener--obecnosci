@@ -1015,129 +1015,192 @@ function renderClients(){
 // CLIENT CARD (szczegółowy ekran klienta)
 // ══════════════════════════════════════════════════
 function openClientCard(clientId){
-  var c=state.clients.find(x=>x.id===clientId);if(!c)return;
-  var sessions=(state.sessions||[]).filter(s=>s.clients.includes(c.id)).sort((a,b)=>b.date.localeCompare(a.date)||b.time?.localeCompare(a.time||'')||0);
+  var idx = state.clients.findIndex(x=>x.id===clientId);
+  showClientScreen(idx);
+}
+
+function showClientScreen(idx){
+  var ex=document.getElementById('client-fullscreen');if(ex)ex.remove();
+
+  var c=state.clients[idx];if(!c)return;
+  var sessions=(state.sessions||[]).filter(s=>s.clients.includes(c.id)).sort((a,b)=>b.date.localeCompare(a.date));
   var left=c.packageLeft||0;
   var used=sessions.length;
   var total=left+used;
   var isJednorazowy=c.payType==='jednorazowy';
-
   var isPairClient=c.clientType==='pair';
-  // Financials — use pair price if clientType==='pair'
+
   var totalCash=sessions.reduce((s,x)=>{var p=x.payments?.[c.id];var usesPair=isPairClient||(x.clients||[]).length>1;var price=usesPair?(c.price2||c.price1||0):(c.price1||0);return s+(p==='cash'?price:0);},0);
   var totalTransfer=sessions.reduce((s,x)=>{var p=x.payments?.[c.id];var usesPair=isPairClient||(x.clients||[]).length>1;var price=usesPair?(c.price2||c.price1||0):(c.price1||0);return s+(p==='transfer'?price:0);},0);
   var totalNone=sessions.reduce((s,x)=>{var p=x.payments?.[c.id];var usesPair=isPairClient||(x.clients||[]).length>1;var price=usesPair?(c.price2||c.price1||0):(c.price1||0);return s+(!p||p==='none'?price:0);},0);
   var totalEarned=totalCash+totalTransfer;
-  var lastSession=sessions[0]||null;
-  var lastPayType=lastSession?(lastSession.payments?.[c.id]||'brak'):'—';
 
-  // Risk
   var riskColor,riskLabel,riskBg;
-  if(isJednorazowy){riskColor='var(--bl)';riskLabel='💵 Jednorazowy';riskBg='rgba(96,165,250,0.08)';}
-  else if(left===0&&used>0){riskColor='var(--rd)';riskLabel='❌ Karnet wyczerpany';riskBg='rgba(248,113,113,0.06)';}
-  else if(left<=2&&left>0){riskColor='var(--yw)';riskLabel=`⚠️ Zostało ${left} wejść`;riskBg='rgba(245,158,11,0.06)';}
-  else if(left>2){riskColor='var(--gr)';riskLabel=`✅ Karnet aktywny · ${left} wejść`;riskBg='rgba(74,222,128,0.05)';}
-  else{riskColor='var(--tx3)';riskLabel='Brak karnetu';riskBg='transparent';}
+  if(isJednorazowy){riskColor='#60a5fa';riskLabel='💵 Jednorazowy';riskBg='rgba(96,165,250,0.08)';}
+  else if(left===0&&used>0){riskColor='#f87171';riskLabel='❌ Karnet wyczerpany';riskBg='rgba(248,113,113,0.06)';}
+  else if(left<=2&&left>0){riskColor='#f59e0b';riskLabel='⚠️ Zostało '+left+' wejść';riskBg='rgba(245,158,11,0.06)';}
+  else if(left>2){riskColor='#4ade80';riskLabel='✅ Aktywny · '+left+' wejść';riskBg='rgba(74,222,128,0.05)';}
+  else{riskColor='#666';riskLabel='Brak karnetu';riskBg='transparent';}
 
-  var ex=document.getElementById('client-card-modal');if(ex)ex.remove();
-  var modal=document.createElement('div');modal.className='ov on';modal.id='client-card-modal';
+  // Calendar heatmap (last 12 weeks)
+  var heatDays=[];
+  for(var i=83;i>=0;i--){
+    var d=new Date();d.setDate(d.getDate()-i);
+    var key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    var hasSes=sessions.find(s=>s.date===key);
+    heatDays.push({key,hasSes:!!hasSes,d:new Date(d)});
+  }
 
-  var historyRows=sessions.slice(0,15).map(s=>{
+  var historyRows=sessions.slice(0,20).map(s=>{
     var isPair=(s.clients||[]).length>1;
     var price=isPair?(c.price2||c.price1||0):(c.price1||0);
     var pay=s.payments?.[c.id]||'';
     var payIcon=pay==='cash'?'💵':pay==='transfer'?'🏦':'❓';
-    var payColor=pay==='cash'?'var(--yw)':pay==='transfer'?'var(--bl)':'var(--rd)';
-    return `<div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid var(--b1)">
-      <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--tx3);min-width:66px">${fmtDate(s.date)}<br>${s.time||''}</div>
-      <div style="flex:1;font-size:12px;color:var(--tx2)">${isPair?'👥 Para':'👤 Solo'}</div>
-      <div style="font-size:14px">${payIcon}</div>
-      <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:${payColor};min-width:52px;text-align:right">${price} zł</div>
+    var payColor=pay==='cash'?'#f59e0b':pay==='transfer'?'#60a5fa':'#f87171';
+    var payLabel=pay==='cash'?'Gotówka':pay==='transfer'?'Przelew':'Brak wpłaty';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid rgba(255,255,255,0.06)">
+      <div style="width:44px;height:44px;border-radius:10px;background:rgba(255,255,255,0.05);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
+        <div style="font-size:15px;font-weight:700;color:#ede9e4;line-height:1">${new Date(s.date+'T12:00:00').getDate()}</div>
+        <div style="font-size:9px;color:#666;font-family:'DM Mono',monospace;text-transform:uppercase">${['sty','lut','mar','kwi','maj','cze','lip','sie','wrz','paź','lis','gru'][new Date(s.date+'T12:00:00').getMonth()]}</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:#ede9e4">${s.time||''} · ${isPair?'👥 Para':'👤 Solo'}</div>
+        <div style="font-size:11px;color:${payColor};margin-top:2px">${payIcon} ${payLabel}</div>
+      </div>
+      <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:${payColor}">${price} zł</div>
     </div>`;
-  }).join('')||'<div style="text-align:center;padding:18px;color:var(--tx3);font-size:12px">Brak historii wejść</div>';
+  }).join('')||'<div style="text-align:center;padding:32px;color:#555;font-size:13px">Brak historii wejść</div>';
 
-  modal.innerHTML=`<div class="modal" style="max-height:92dvh;overflow-y:auto;padding-bottom:24px">
-    <button class="mc" onclick="document.getElementById('client-card-modal').remove()">✕</button>
+  // Nav dots
+  var dots=state.clients.map((_,i)=>`<div style="width:${i===idx?'20px':'6px'};height:6px;border-radius:99px;background:${i===idx?c.color:'rgba(255,255,255,0.2)'};transition:all 0.25s;cursor:pointer" onclick="showClientScreen(${i})"></div>`).join('');
 
-    <!-- HEADER -->
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-      <div style="width:50px;height:50px;border-radius:50%;background:${c.color}22;color:${c.color};display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:22px;font-weight:800;border:2px solid ${riskColor}44;flex-shrink:0">${c.name[0]}</div>
-      <div>
-        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800">${c.name}</div>
-        <div style="font-size:11px;color:var(--tx3);font-family:'DM Mono',monospace">${c.phone||'Brak numeru'}</div>
-      </div>
+  var screen=document.createElement('div');
+  screen.id='client-fullscreen';
+  screen.style.cssText='position:fixed;inset:0;background:#0a0a0a;z-index:200;display:flex;flex-direction:column;overflow:hidden;max-width:520px;left:50%;transform:translateX(-50%)';
+
+  screen.innerHTML=`
+    <!-- TOP BAR -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,0.07)">
+      <button onclick="document.getElementById('client-fullscreen').remove()" style="background:rgba(255,255,255,0.07);border:none;color:#ede9e4;border-radius:8px;padding:7px 13px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">← Powrót</button>
+      <div style="display:flex;gap:6px;align-items:center">${dots}</div>
+      <button onclick="document.getElementById('client-fullscreen').remove();openEditClient('${c.id}')" style="background:rgba(255,255,255,0.07);border:none;color:#ede9e4;border-radius:8px;padding:7px 13px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">✏️ Edytuj</button>
     </div>
 
-    <!-- STATUS KARNETU -->
-    <div style="background:${riskBg};border:1px solid ${riskColor}33;border-radius:var(--ra);padding:14px;margin-bottom:14px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${!isJednorazowy&&total>0?'10px':'0'}">
-        <div>
-          <div style="font-size:10px;color:var(--tx3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Status karnetu</div>
-          <div style="font-size:15px;font-weight:700;color:${riskColor}">${riskLabel}</div>
+    <!-- SCROLL CONTENT -->
+    <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch" id="cfs-scroll">
+
+      <!-- HERO -->
+      <div style="padding:28px 18px 20px;background:linear-gradient(180deg,${c.color}18 0%,transparent 100%)">
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">
+          <div style="width:64px;height:64px;border-radius:50%;background:${c.color}33;color:${c.color};display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:26px;font-weight:800;border:2px solid ${c.color}66;flex-shrink:0">${c.name[0]}</div>
+          <div>
+            <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#ede9e4;line-height:1.1">${c.name}</div>
+            <div style="font-size:12px;color:#666;font-family:'DM Mono',monospace;margin-top:4px">${c.phone||'Brak numeru'}</div>
+            <div style="display:inline-block;margin-top:6px;padding:3px 10px;border-radius:99px;font-size:11px;font-family:'DM Mono',monospace;font-weight:600;background:${riskBg};color:${riskColor};border:1px solid ${riskColor}44">${riskLabel}</div>
+          </div>
         </div>
-        ${!isJednorazowy?`<button onclick="document.getElementById('client-card-modal').remove();openAddPkg('${c.id}')" style="background:var(--ac);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer">+ Doładuj</button>`:''}
+
+        <!-- STATS ROW -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:12px;text-align:center">
+            <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:#ede9e4">${used}</div>
+            <div style="font-size:10px;color:#666;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">Wejść</div>
+          </div>
+          <div style="background:rgba(245,158,11,0.1);border-radius:12px;padding:12px;text-align:center;border:1px solid rgba(245,158,11,0.15)">
+            <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#f59e0b">${totalCash}<span style="font-size:11px">zł</span></div>
+            <div style="font-size:10px;color:#666;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">💵 Gotówka</div>
+          </div>
+          <div style="background:rgba(96,165,250,0.1);border-radius:12px;padding:12px;text-align:center;border:1px solid rgba(96,165,250,0.15)">
+            <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#60a5fa">${totalTransfer}<span style="font-size:11px">zł</span></div>
+            <div style="font-size:10px;color:#666;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">🏦 Przelew</div>
+          </div>
+        </div>
       </div>
-      ${!isJednorazowy&&total>0?`
-      <div style="height:8px;background:rgba(255,255,255,0.08);border-radius:99px;overflow:hidden">
-        <div style="height:100%;width:${Math.round(left/total*100)}%;background:${riskColor};border-radius:99px;transition:width 0.4s"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:10px;color:var(--tx3);font-family:'DM Mono',monospace">
-        <span>Zostało: ${left}</span><span>Wykorzystano: ${used}</span><span>Łącznie: ${total}</span>
+
+      <!-- KARNET BAR -->
+      ${!isJednorazowy?`<div style="margin:0 18px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div>
+            <div style="font-size:10px;color:#666;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Karnet</div>
+            <div style="font-size:15px;font-weight:700;color:${riskColor}">${riskLabel}</div>
+          </div>
+          <button onclick="document.getElementById('client-fullscreen').remove();openAddPkg('${c.id}')" style="background:${c.color};color:#000;border:none;border-radius:9px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">+ Doładuj</button>
+        </div>
+        ${total>0?`<div style="height:10px;background:rgba(255,255,255,0.08);border-radius:99px;overflow:hidden;margin-bottom:8px">
+          <div style="height:100%;width:${Math.round(left/total*100)}%;background:${riskColor};border-radius:99px;transition:width 0.5s"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:#555;font-family:'DM Mono',monospace">
+          <span>Zostało: <strong style="color:${riskColor}">${left}</strong></span>
+          <span>Użyte: ${used}</span>
+          <span>Razem: ${total}</span>
+        </div>`:''}
       </div>`:''}
+
+      <!-- NIEZAPLACONE -->
+      ${totalNone>0?`<div style="margin:0 18px 16px;background:rgba(248,113,113,0.07);border:1px solid rgba(248,113,113,0.2);border-radius:14px;padding:14px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:10px;color:#f87171;font-family:'DM Mono',monospace;font-weight:700;margin-bottom:2px">⚠️ NIEZAPŁACONE</div>
+          <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#f87171">${totalNone} zł</div>
+        </div>
+        <button onclick="document.getElementById('client-fullscreen').remove();openMsg('${c.id}')" style="background:#f87171;color:#fff;border:none;border-radius:9px;padding:10px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">💬 Przypomnij</button>
+      </div>`:''}
+
+      <!-- AKTYWNOSC HEATMAP -->
+      <div style="margin:0 18px 16px">
+        <div style="font-size:10px;color:#555;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px">Aktywność — 12 tygodni</div>
+        <div style="display:grid;grid-template-columns:repeat(12,1fr);gap:4px">
+          ${Array.from({length:12},(_,week)=>`<div style="display:flex;flex-direction:column;gap:4px">
+            ${heatDays.slice(week*7,(week+1)*7).map(day=>`<div title="${day.key}" style="width:100%;padding-top:100%;border-radius:4px;background:${day.hasSes?c.color+'cc':'rgba(255,255,255,0.06)'};position:relative"></div>`).join('')}
+          </div>`).join('')}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px">
+          <div style="width:10px;height:10px;border-radius:2px;background:rgba(255,255,255,0.06)"></div>
+          <span style="font-size:10px;color:#555;font-family:'DM Mono',monospace">Brak</span>
+          <div style="width:10px;height:10px;border-radius:2px;background:${c.color}cc;margin-left:8px"></div>
+          <span style="font-size:10px;color:#555;font-family:'DM Mono',monospace">Trening</span>
+        </div>
+      </div>
+
+      <!-- SZYBKIE AKCJE -->
+      <div style="margin:0 18px 16px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button onclick="quickEntry('${c.id}');document.getElementById('client-fullscreen').remove()" style="padding:14px;background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.25);border-radius:12px;color:#4ade80;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">✅ Dodaj wejście</button>
+        <button onclick="quickPayment('${c.id}');document.getElementById('client-fullscreen').remove()" style="padding:14px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:12px;color:#f59e0b;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Oznacz wpłatę</button>
+        <button onclick="document.getElementById('client-fullscreen').remove();openMsg('${c.id}')" style="padding:12px;background:#25D366;border:none;border-radius:12px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">💬 WhatsApp</button>
+        <button onclick="document.getElementById('client-fullscreen').remove();openEditClient('${c.id}')" style="padding:12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;color:#ede9e4;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">✏️ Edytuj profil</button>
+      </div>
+
+      <!-- HISTORIA -->
+      <div style="margin:0 18px 100px">
+        <div style="font-size:10px;color:#555;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px">Historia wejść (${sessions.length})</div>
+        <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:0 14px">
+          ${historyRows}
+        </div>
+      </div>
+
     </div>
 
-    <!-- STATYSTYKI FINANSOWE -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-bottom:14px">
-      <div style="background:var(--s2);border:1px solid var(--b1);border-radius:10px;padding:11px;text-align:center">
-        <div style="font-size:9px;color:var(--tx3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Wejścia</div>
-        <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800">${used}</div>
-      </div>
-      <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.15);border-radius:10px;padding:11px;text-align:center">
-        <div style="font-size:9px;color:var(--tx3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">💵 Gotówka</div>
-        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--yw)">${totalCash} zł</div>
-      </div>
-      <div style="background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.15);border-radius:10px;padding:11px;text-align:center">
-        <div style="font-size:9px;color:var(--tx3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">🏦 Przelew</div>
-        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--bl)">${totalTransfer} zł</div>
-      </div>
+    <!-- SWIPE NAV -->
+    <div style="position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-between;padding:16px 18px;pointer-events:none">
+      ${idx>0?`<button onclick="showClientScreen(${idx-1})" style="pointer-events:all;background:rgba(20,20,20,0.95);border:1px solid rgba(255,255,255,0.12);color:#ede9e4;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;backdrop-filter:blur(8px)">← ${state.clients[idx-1].name.split(' ')[0]}</button>`:'<div></div>'}
+      ${idx<state.clients.length-1?`<button onclick="showClientScreen(${idx+1})" style="pointer-events:all;background:rgba(20,20,20,0.95);border:1px solid rgba(255,255,255,0.12);color:#ede9e4;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;backdrop-filter:blur(8px)">${state.clients[idx+1].name.split(' ')[0]} →</button>`:'<div></div>'}
     </div>
+  `;
 
-    ${totalNone>0?`<div style="background:rgba(248,113,113,0.07);border:1px solid rgba(248,113,113,0.2);border-radius:10px;padding:11px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
-      <div>
-        <div style="font-size:10px;color:var(--rd);font-family:'DM Mono',monospace;font-weight:700;margin-bottom:2px">⚠️ NIEZAPŁACONE</div>
-        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--rd)">${totalNone} zł</div>
-      </div>
-      <button onclick="openMsg('${c.id}');document.getElementById('client-card-modal').remove()" style="background:var(--rd);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer">💬 Przypomnij</button>
-    </div>`:''}
+  // swipe gesture
+  var touchStartX=0,touchStartY=0;
+  screen.querySelector('#cfs-scroll').addEventListener('touchstart',e=>{touchStartX=e.touches[0].clientX;touchStartY=e.touches[0].clientY;},{passive:true});
+  screen.querySelector('#cfs-scroll').addEventListener('touchend',e=>{
+    var dx=e.changedTouches[0].clientX-touchStartX;
+    var dy=e.changedTouches[0].clientY-touchStartY;
+    if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>60){
+      if(dx<0&&idx<state.clients.length-1)showClientScreen(idx+1);
+      else if(dx>0&&idx>0)showClientScreen(idx-1);
+    }
+  },{passive:true});
 
-    <!-- SZYBKIE AKCJE -->
-    <div style="font-size:10px;color:var(--tx3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Szybkie akcje</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:16px">
-      <button onclick="quickEntry('${c.id}')" style="padding:13px;background:var(--s2);border:1px solid var(--b2);border-radius:10px;color:var(--tx);font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">
-        ✅ Dodaj wejście
-      </button>
-      <button onclick="quickPayment('${c.id}')" style="padding:13px;background:var(--s2);border:1px solid var(--b2);border-radius:10px;color:var(--tx);font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">
-        💰 Oznacz wpłatę
-      </button>
-      <button onclick="openMsg('${c.id}');document.getElementById('client-card-modal').remove()" style="padding:11px;background:#25D366;border:none;border-radius:10px;color:#fff;font-size:12px;font-weight:600;cursor:pointer">
-        💬 WhatsApp
-      </button>
-      <button onclick="document.getElementById('client-card-modal').remove();openEditClient('${c.id}')" style="padding:11px;background:var(--s2);border:1px solid var(--b2);border-radius:10px;color:var(--tx);font-size:12px;font-weight:600;cursor:pointer">
-        ✏️ Edytuj profil
-      </button>
-    </div>
+  document.body.appendChild(screen);
+}
 
-    <!-- HISTORIA WEJŚĆ -->
-    <div style="font-size:10px;color:var(--tx3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Historia wejść (${sessions.length})</div>
-    <div style="background:var(--s2);border:1px solid var(--b1);border-radius:var(--ra);padding:0 12px">
-      ${historyRows}
-    </div>
-
-    <div style="height:12px"></div>
-  </div>`;
-
-  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
-  document.body.appendChild(modal);
 }
 
 // ── QUICK ENTRY ────────────────────────────────────────────
