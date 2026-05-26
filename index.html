@@ -572,6 +572,73 @@ function renderSlotCard(slot){
   var clients=(slot.clients||[]).map(id=>state.clients.find(x=>x.id===id)).filter(Boolean);
   var isTemplate=!!(slot.isTemplate||slot.fromTemplate);
   var payments=slot.payments||{};
+  var isUnpaid=slot.done&&clients.some(c=>!payments[c.id]||payments[c.id]==='none');
+
+  var clientsHtml=clients.length?clients.map(c=>{
+    var pk=karnetTag(c);
+    var isPair=clients.length>1;
+    var price=isPair?(c.price2||c.price1||0):(c.price1||0);
+    var pay=payments[c.id];
+    var payBadge=slot.done?(pay==='cash'?'<span class="ct-pay-badge cash">💵</span>':pay==='transfer'?'<span class="ct-pay-badge transfer">🏦</span>':'<span class="ct-pay-badge none">❓</span>'):'';
+    return `<div class="client-tag">
+      <div class="ct-left">
+        <div class="ct-dot" style="background:${c.color}"></div>
+        <span class="ct-name">${c.name}</span>
+        <span class="ct-karnet ${pk.cls}">${pk.txt}</span>
+      </div>
+      <div class="ct-right">
+        ${payBadge}
+        <span class="ct-price">${price} zł</span>
+      </div>
+    </div>`;
+  }).join(''):'';
+
+  var doneHtml='';
+  if(slot.done){
+    var cashTotal=0,transferTotal=0;
+    (slot.clients||[]).forEach(cid=>{
+      var c=state.clients.find(x=>x.id===cid);if(!c)return;
+      var isPair=(slot.clients||[]).length>1;
+      var price=isPair?(c.price2||c.price1||0):(c.price1||0);
+      var pay=payments[cid];
+      if(pay==='cash')cashTotal+=price;
+      else if(pay==='transfer')transferTotal+=price;
+    });
+    var totalSum=cashTotal+transferTotal;
+    doneHtml=`<div class="slot-done">
+      <span class="sdg present">✓ Obecny</span>
+      ${cashTotal?`<span class="sdg cash">💵 ${cashTotal} zł</span>`:''}
+      ${transferTotal?`<span class="sdg transfer">🏦 ${transferTotal} zł</span>`:''}
+      ${isUnpaid?`<span class="sdg" style="background:rgba(248,113,113,0.12);color:var(--rd)">⚠️ brak wpłaty</span>`:''}
+      <span style="margin-left:auto;font-family:'DM Mono',monospace;font-size:12px;color:var(--ac);font-weight:700">${totalSum} zł</span>
+    </div>`;
+  } else if(slot.absent){
+    doneHtml=`<div class="slot-done"><span class="sdg absent">✗ Nieobecny</span></div>`;
+  }
+
+  var tplLabel=isTemplate?` <span style="font-size:8px;opacity:0.5">🔄</span>`:'';
+  var actionBtns=(!slot.done&&!slot.absent)?
+    `<div class="slot-actions">
+      <button class="btn-s gr" onclick="openAttend('${slot.id}')">✓ Obecność</button>
+      ${!isTemplate?`<button class="btn-s sm" onclick="deleteSlotById('${slot.id}')">🗑</button>`:''}
+    </div>`:
+    `<div class="slot-actions">
+      <button class="btn-s" onclick="reopenAttend('${slot.id}')" style="color:var(--bl);border-color:var(--bl)">✏️ Edytuj</button>
+      <button class="btn-s sm rd" onclick="deleteSlotById('${slot.id}')" style="color:var(--rd);border-color:var(--rd)">🗑 Usuń</button>
+    </div>`;
+
+  return `<div class="slot${clients.length?' has-clients':''}${isTemplate?' is-template':''}${isUnpaid?' unpaid':''}" id="sl-${slot.id.replace(/[^a-zA-Z0-9]/g,'_')}">
+    <div class="slot-time">${slot.time}${tplLabel}${isUnpaid?'<span class="slot-time-badge" style="background:rgba(248,113,113,0.15);color:var(--rd)">⚠️ nie zapłacono</span>':''}</div>
+    <div class="slot-status">${clients.length?clients.length+' os.':'Brak klientów'} · ${slot.date}</div>
+    ${clientsHtml?`<div style="margin-bottom:8px">${clientsHtml}</div>`:''}
+    ${actionBtns}
+    ${doneHtml}
+  </div>`;
+}
+
+  var clients=(slot.clients||[]).map(id=>state.clients.find(x=>x.id===id)).filter(Boolean);
+  var isTemplate=!!(slot.isTemplate||slot.fromTemplate);
+  var payments=slot.payments||{};
 
   // Detect unpaid: done=true but any client has payments[id]=undefined or 'none'
   var isUnpaid=slot.done&&clients.some(c=>!payments[c.id]||payments[c.id]==='none');
